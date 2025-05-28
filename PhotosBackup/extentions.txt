@@ -1,0 +1,2 @@
+video_extensions = (".mp4", ".mov", ".avi", ".mkv", ".flv", ".wmv", ".mpeg", ".webm", ".3gp")
+image_extensions = (".jpg", ".jpeg", ".png", ".tiff", ".bmp", ".gif", ".cr2", ".dng")
