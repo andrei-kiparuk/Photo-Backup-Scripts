@@ -5,6 +5,10 @@
 
 set -euo pipefail
 
+# Set locale for proper Unicode/international character handling
+export LC_ALL=en_US.UTF-8
+export LANG=en_US.UTF-8
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -41,7 +45,7 @@ fi
 
 # Install system dependencies
 log "Installing system dependencies..."
-brew install exiftool jq bc
+brew install exiftool jq
 
 # Create virtual environment if it doesn't exist
 VENV_DIR="./venv"
@@ -69,7 +73,7 @@ log "Verifying dependencies..."
 missing=()
 
 # Check system dependencies
-system_deps=("exiftool" "python3" "jq" "bc")
+system_deps=("exiftool" "python3" "jq" "awk")
 for dep in "${system_deps[@]}"; do
     if ! command -v "$dep" &> /dev/null; then
         missing+=("$dep")
@@ -126,7 +130,13 @@ echo "3. Run: ./import_large_archive.sh"
 echo "4. Monitor progress: python import_status.py status"
 echo "5. View logs: python import_status.py logs"
 echo ""
+echo "📁 Index Management:"
+echo "  View index stats: ./index_stats.sh"
+echo "  Force reindex: ./reindex.sh"
+echo ""
 echo "To start fresh, run: python import_status.py reset"
 echo ""
-echo -e "${YELLOW}Note: Always activate the virtual environment before running Python scripts:${NC}"
+echo -e "${YELLOW}Note: First run will create an index of all folders (may take a few minutes)${NC}"
+echo -e "${YELLOW}Subsequent runs will be much faster using the cached index${NC}"
+echo -e "${YELLOW}Always activate the virtual environment before running Python scripts:${NC}"
 echo "  source ./venv/bin/activate" 
