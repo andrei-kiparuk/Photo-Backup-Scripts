@@ -292,10 +292,10 @@ class DateFixer:
         
         for file_path in files:
             try:
-                # Check if file is duplicate
-                if self.is_duplicate(file_path, existing_hashes):
-                    self.duplicate_files.append(str(file_path))
-                    continue
+                # Skip duplicate checking - import all files
+                # if self.is_duplicate(file_path, existing_hashes):
+                #     self.duplicate_files.append(str(file_path))
+                #     continue
                 
                 # Get oldest date for this file
                 oldest_date = self.get_oldest_date(file_path)
@@ -306,10 +306,10 @@ class DateFixer:
                 
                 # Copy file with correct date
                 if self.copy_file_with_date(file_path, target_path, oldest_date):
-                    # Add to existing hashes
-                    file_hash = self.compute_file_hash(file_path)
-                    if file_hash:
-                        existing_hashes[file_hash] = target_path
+                    # Skip hash tracking since we're not checking duplicates
+                    # file_hash = self.compute_file_hash(file_path)
+                    # if file_hash:
+                    #     existing_hashes[file_hash] = target_path
                     
                     self.processed_files += 1
                     

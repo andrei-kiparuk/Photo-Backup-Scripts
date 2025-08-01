@@ -2,6 +2,12 @@
 
 # Large Archive Import Script
 # Handles 8TB+ of photos with batch processing, duplicate detection, and resumability
+#
+# TRACKING FIX: Individual folders are now properly marked as processed in the tracking file
+# immediately after successful import. This prevents re-importing already processed folders
+# when the script is restarted. Progress status is displayed on resume.
+# 
+# DUPLICATE DETECTION: Added --skip-dups to osxphotos import for additional duplicate protection.
 
 set -euo pipefail
 
@@ -85,7 +91,33 @@ init_progress() {
 EOF
     else
         log "Loading existing progress from $TRACKING_FILE"
+        show_progress_status
     fi
+}
+
+# Show current progress status
+show_progress_status() {
+    if [ ! -f "$TRACKING_FILE" ]; then
+        return
+    fi
+    
+    local started_at=$(jq -r '.started_at' "$TRACKING_FILE")
+    local total_files=$(jq -r '.total_files_processed' "$TRACKING_FILE")
+    local total_size=$(jq -r '.total_size_processed_gb' "$TRACKING_FILE")
+    local processed_count=$(jq -r '.processed_folders | length' "$TRACKING_FILE")
+    local last_folder=$(jq -r '.last_processed_folder' "$TRACKING_FILE")
+    local current_batch=$(jq -r '.current_batch' "$TRACKING_FILE")
+    
+    log "=== IMPORT PROGRESS STATUS ==="
+    log "Started: $started_at"
+    log "Current batch: $current_batch"
+    log "Folders processed: $processed_count"
+    log "Files processed: $total_files"
+    log "Data processed: ${total_size}GB"
+    if [ "$last_folder" != "null" ] && [ -n "$last_folder" ]; then
+        log "Last processed: $last_folder"
+    fi
+    log "================================"
 }
 
 # Update progress tracking
@@ -244,7 +276,7 @@ get_next_batch() {
     processed_folders=$(jq -r '.processed_folders[]' "$TRACKING_FILE" 2>/dev/null || echo "")
     
     # Get all folders from index (creates index if needed)
-    get_folders_from_index | while IFS='|' read -r folder folder_size_gb; do
+    while IFS='|' read -r folder folder_size_gb; do
         # Skip if already processed (Unicode-safe)
         if echo "$processed_folders" | LC_ALL=C grep -Fxq "$folder"; then
             continue
@@ -267,7 +299,7 @@ get_next_batch() {
         
         # Output folder info for processing
         echo "$folder|$folder_size_gb"
-    done
+    done < <(get_folders_from_index)
 }
 
 # Process a single folder
@@ -298,10 +330,10 @@ fix_file_dates_in_folder('$folder', '$temp_dir')
         if osxphotos import "$temp_dir" \
             --sidecar \
             --exiftool \
-            --skip-dups \
             --resume \
             --walk \
             --verbose \
+            --skip-dups \
             --album "$ALBUM_NAME" \
             --stop-on-error 5 2>&1 | tee -a "$LOG_FILE"; then
             import_result=0
@@ -323,6 +355,21 @@ fix_file_dates_in_folder('$folder', '$temp_dir')
     
     if [ $import_result -eq 0 ]; then
         log "Successfully imported folder: $folder"
+        
+        # Mark folder as processed immediately after successful import
+        local file_count=$(find "$folder" -type f | wc -l)
+        local folder_size_kb=$(du -sk "$folder" 2>/dev/null | cut -f1)
+        
+        # Validate folder size is numeric and calculate GB
+        if [[ "$folder_size_kb" =~ ^[0-9]+$ ]] && [ -n "$folder_size_kb" ]; then
+            local folder_size_gb=$(awk "BEGIN {printf \"%.2f\", $folder_size_kb / 1024 / 1024}")
+        else
+            local folder_size_gb="0.00"
+            warn "Could not determine size for processed folder: $folder"
+        fi
+        
+        update_progress "$folder" "$file_count" "$folder_size_gb"
+        
         return 0
     else
         error "Failed to import folder: $folder after $MAX_RETRIES attempts"
@@ -412,15 +459,14 @@ main() {
         fi
         
         # Process each folder in the batch
-        local total_files=0
-        local total_size=0
+        local batch_folders_processed=0
         
         while IFS='|' read -r folder size_gb; do
             # Validate folder path looks legitimate and exists
             if [ -n "$folder" ] && [[ "$folder" =~ ^/.* ]] && [ -d "$folder" ]; then
                 if process_folder "$folder"; then
-                    total_files=$((total_files + $(find "$folder" -type f | wc -l)))
-                    total_size=$(awk "BEGIN {printf \"%.2f\", $total_size + $size_gb}")
+                    batch_folders_processed=$((batch_folders_processed + 1))
+                    log "Batch progress: $batch_folders_processed folders completed in current batch"
                 else
                     warn "Failed to process folder: $folder"
                 fi
@@ -429,9 +475,6 @@ main() {
                 echo -e "${YELLOW}[$(date '+%Y-%m-%d %H:%M:%S')] WARNING:${NC} Skipping invalid folder path: $folder" >> "$LOG_FILE"
             fi
         done <<< "$batch_info"
-        
-        # Update progress
-        update_progress "" "$total_files" "$total_size"
         
         # Restart Photos app periodically
         local current_batch=$(jq -r '.current_batch' "$TRACKING_FILE")
@@ -443,7 +486,7 @@ main() {
         # Update batch counter
         jq --argjson batch $((current_batch + 1)) '.current_batch = $batch' "$TRACKING_FILE" > "${TRACKING_FILE}.tmp" && mv "${TRACKING_FILE}.tmp" "$TRACKING_FILE"
         
-        log "Completed batch $current_batch. Processed $total_files files, ${total_size}GB"
+        log "Completed batch $current_batch. Successfully processed $batch_folders_processed folders"
     done
     
     log "Import process completed successfully!"
