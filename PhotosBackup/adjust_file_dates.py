@@ -86,7 +86,7 @@ def process_directory(root_dir):
 
 if __name__ == "__main__":
     # Specify the root directory containing YYYY/MM/DD structure
-    root_directory = "/Volumes/T7/inprocess"
+    root_directory = "/Volumes/SlowDisk/iCloud"
     
     if not os.path.exists(root_directory):
         print(f"Error: Directory {root_directory} does not exist")
