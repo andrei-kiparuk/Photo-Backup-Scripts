@@ -1,2 +1,6 @@
 Pillow>=10.0.0
-PyExifTool>=0.5.5 
+PyExifTool>=0.5.5
+osxphotos>=0.74.0
+ImageHash>=4.3.1
+numpy>=1.24.0
+pillow-heif>=0.13.0 

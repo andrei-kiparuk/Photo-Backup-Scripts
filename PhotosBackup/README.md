@@ -49,6 +49,8 @@ PhotosBackup/
 ├── date_fixer.py              # Date extraction and duplicate detection
 ├── import_status.py           # Progress monitoring and management
 ├── setup_import.sh            # Environment setup
+├── visual_duplicate_finder.py # Visual duplicate detection by content
+├── run_duplicate_finder.sh    # Helper script for duplicate finder
 ├── requirements.txt           # Python dependencies
 └── README.md                 # This file
 ```
@@ -81,6 +83,97 @@ Photos are imported to the "import2025" album. Change this in `import_large_arch
 ```bash
 ALBUM_NAME="import2025"
 ```
+
+## Visual Duplicate Detection
+
+The `visual_duplicate_finder.py` script detects duplicates by visual content (perceptual hashing) rather than file hashes, allowing it to find:
+- Same photo with different EXIF/metadata
+- Same photo with different compression/quality
+- Photos that are visually similar but not identical
+
+### Features
+
+- **Perceptual Hashing**: Uses visual similarity to detect duplicates, not just identical files
+- **Smart Selection**: Keeps the oldest file with the most EXIF/metadata information
+- **Date-Aware**: Only compares files within the same date folder (YYYY/MM/DD)
+- **Structure Preservation**: Moves duplicates to parallel folder structure
+- **Two Search Modes**:
+  - `all`: Search through all folders and subfolders recursively
+  - `deepest`: Search only in deepest folders (day-level YYYY/MM/DD)
+
+### Setup
+
+If you haven't already set up the environment:
+```bash
+./setup_import.sh
+```
+
+This will install `ImageHash` and `numpy` which are required for perceptual hashing.
+
+### Usage
+
+```bash
+# Basic usage - search all folders
+./run_duplicate_finder.sh /path/to/archive all
+
+# Search only deepest folders (recommended for YYYY/MM/DD structure)
+./run_duplicate_finder.sh /path/to/archive deepest
+
+# Custom duplicates folder location
+./run_duplicate_finder.sh /path/to/archive all --duplicates /path/to/duplicates
+
+# With debug logging
+./run_duplicate_finder.sh /path/to/archive deepest --log-level DEBUG
+```
+
+### How It Works
+
+1. **Scanning**: Walks through archive, calculating perceptual hashes for each file
+2. **Grouping**: Groups files by visual similarity hash within each date folder
+3. **Scoring**: Scores each file based on EXIF/metadata richness:
+   - Date/Time fields: +10 points
+   - GPS coordinates: +7 points
+   - Keywords/Tags: +5 points
+   - Camera info: +3 points
+   - Other EXIF fields: +1-2 points each
+4. **Selection**: Keeps file with highest score (or oldest if tied)
+5. **Moving**: Moves duplicates to duplicates folder, preserving structure
+
+### Example
+
+```
+Archive structure:
+/Volumes/SlowDisk/iCloud/
+├── 2020/
+│   └── 01/
+│       └── 15/
+│           ├── photo1.jpg (with full EXIF)
+│           ├── photo1_copy.jpg (no EXIF)
+│           └── photo1_edited.jpg (some EXIF)
+
+Running: ./run_duplicate_finder.sh /Volumes/SlowDisk/iCloud deepest
+
+Result:
+- Keeps: photo1.jpg (highest metadata score)
+- Moves: photo1_copy.jpg, photo1_edited.jpg to
+  /Volumes/SlowDisk/duplicates/2020/01/15/
+```
+
+### Options
+
+- `--duplicates PATH`: Custom location for duplicates (default: archive/../duplicates)
+- `--log-level LEVEL`: Set logging level (DEBUG, INFO, WARNING, ERROR)
+
+### Report
+
+After processing, a detailed JSON report is saved to:
+`duplicates_folder/duplicate_report.json`
+
+Contains:
+- Scan metadata and statistics
+- All duplicate groups found
+- Which files were kept and which were moved
+- Metadata scores for each file
 
 ## Usage
 
